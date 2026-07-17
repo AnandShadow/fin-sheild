@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 app = FastAPI(
     title="Forensic Scam Analyzer Backend",
     description="FastAPI backend to analyze financial scam images using Gemini 1.5 Flash",
-    version="1.0.0"
+    version="1.0.1"
 )
 
 # Add CORS middleware to allow stream lit and other clients to access the backend
