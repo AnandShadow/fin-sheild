@@ -1,0 +1,15 @@
+# Exclude environment variables file
+.env
+
+# Exclude local python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Streamlit config and caches
+.streamlit/
+
+# Virtual environments
+venv/
+.venv/
+env/
