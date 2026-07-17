@@ -1,8 +1,11 @@
 import os
 import io
+import json
 import requests
 import streamlit as st
 from PIL import Image
+import google.generativeai as genai
+from dotenv import load_dotenv
 
 # Set Streamlit page config
 st.set_page_config(
@@ -147,30 +150,103 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------- Config & Constants -----------------
-BACKEND_URL = "http://127.0.0.1:8000/analyze"
 TEST_SCAMS_DIR = "test_scams"
 
-# Check if backend is alive
-backend_online = False
-try:
-    health_check = requests.get("http://127.0.0.1:8000/", timeout=1)
-    if health_check.status_code == 200:
-        backend_online = True
-except Exception:
-    backend_online = False
+# Load environment variables from .env if present (for local development)
+load_dotenv()
+
+# Retrieve the API Key
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        api_key = None
+
+# Configure Gemini SDK
+if api_key:
+    genai.configure(api_key=api_key)
+
+SYSTEM_PROMPT = r"""You are an elite financial forensic AI operating for a digital literacy platform. Your objective is to protect vulnerable citizens from hyper-localized financial scams.
+Analyze the provided image and the user's optional text description.
+Perform these tasks strictly:
+
+Threat Detection: Identify the primary threat vector (e.g., Phishing URL, Fake KYC Request, Electricity Scam). If safe, output Safe.
+
+Risk Assessment: Assign a risk_index from 1 to 5, where 5 is the highest risk.
+
+Translation and Extraction: Extract any vernacular text (Telugu, Hindi, slang) from the image and translate it to formal English.
+
+Localized Warning: Draft a short 2-sentence warning explaining the scam and immediate preventative action.
+Output ONLY a valid JSON object with the exact keys: threat_category, risk_index, english_translation, and localized_warning. Do not include markdown formatting or json code blocks in the output. Return raw JSON."""
+
+def analyze_image(image_bytes: bytes, description: str = None) -> dict:
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY is not configured. Please add it to your .env file or Streamlit secrets.")
+        
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+    except Exception as e:
+        raise ValueError(f"Invalid image file: {str(e)}")
+    
+    # Build contents for generation
+    prompt_contents = [image, SYSTEM_PROMPT]
+    if description:
+        prompt_contents.append(f"\nUser-provided context/description: {description}")
+    
+    # Try gemini-1.5-flash as default, then fallback
+    model_name = "gemini-1.5-flash"
+    try:
+        model = genai.GenerativeModel(model_name)
+        response = model.generate_content(
+            prompt_contents,
+            generation_config={"response_mime_type": "application/json"}
+        )
+    except Exception as e:
+        if "not found" in str(e).lower() or "404" in str(e) or "not supported" in str(e).lower():
+            fallback_models = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+            success = False
+            last_err = e
+            for fb_model in fallback_models:
+                try:
+                    model = genai.GenerativeModel(fb_model)
+                    response = model.generate_content(
+                        prompt_contents,
+                        generation_config={"response_mime_type": "application/json"}
+                    )
+                    success = True
+                    break
+                except Exception as fb_err:
+                    last_err = fb_err
+                    continue
+            if not success:
+                raise last_err
+        else:
+            raise e
+
+    response_text = response.text.strip()
+    data = json.loads(response_text)
+    
+    # Validate keys
+    required_keys = ["threat_category", "risk_index", "english_translation", "localized_warning"]
+    for key in required_keys:
+        if key not in data:
+            data[key] = "Not analyzed" if key != "risk_index" else 1
+            
+    return data
 
 # ----------------- Sidebar Controls -----------------
 st.sidebar.title("Configuration")
 
 # Connection Status Indicator
-if backend_online:
-    st.sidebar.success("● FastAPI Backend Online")
+if api_key:
+    st.sidebar.success("🟢 Gemini API Configured")
 else:
-    st.sidebar.error("○ FastAPI Backend Offline")
+    st.sidebar.error("🔴 Gemini API Key Missing")
     st.sidebar.info("""
-    **To start backend server:**
-    Run:
-    `uvicorn backend:app --reload`
+    **To configure Gemini API:**
+    - **Locally:** Add `GEMINI_API_KEY=your_key_here` to your `.env` file in the project folder.
+    - **In Production:** Add `GEMINI_API_KEY` to the **App Secrets** in the Streamlit Cloud dashboard.
     """)
 
 st.sidebar.markdown("---")
@@ -244,22 +320,14 @@ with col2:
     st.subheader("📊 Forensic Analysis Dashboard")
     
     if analyze_button and image_bytes is not None:
-        if not backend_online:
-            st.error("Cannot analyze. The FastAPI backend server is offline. Please start it on port 8000.")
+        if not api_key:
+            st.error("Cannot analyze. GEMINI_API_KEY is not configured. Please add it to your .env file or Streamlit secrets.")
         else:
-            with st.spinner("Analyzing threat with Gemini 1.5 Flash..."):
+            with st.spinner("Analyzing threat with Gemini AI..."):
                 try:
-                    # Prepare file payload
-                    files = {"file": ("image.png", image_bytes, "image/png")}
-                    data = {}
-                    if user_description:
-                        data["description"] = user_description
+                    analysis = analyze_image(image_bytes, user_description)
                     
-                    response = requests.post(BACKEND_URL, files=files, data=data)
-                    
-                    if response.status_code == 200:
-                        analysis = response.json()
-                        
+                    if analysis:
                         # Extract data from backend JSON response
                         threat_category = analysis.get("threat_category", "Unknown")
                         risk_index = analysis.get("risk_index", 1)
@@ -315,10 +383,9 @@ with col2:
                         
                         pass
                     else:
-                        error_detail = response.json().get("detail", response.text)
-                        st.error(f"Backend returned an error: {error_detail}")
+                        st.error("Analysis failed to generate results.")
                 except Exception as e:
-                    st.error(f"Connection failed: {str(e)}")
+                    st.error(f"Analysis failed: {str(e)}")
     else:
         st.markdown("""
         <div style="background-color: #111827; border: 1px dashed #374151; border-radius: 12px; padding: 3rem; text-align: center; color: #64748b;">
