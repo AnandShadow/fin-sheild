@@ -24,8 +24,8 @@ Fin-Shield AI acts as an intelligent intermediary. It scans incoming digital int
 ## 🛠️ Technology Stack
 * **Language:** Python
 * **AI/ML:** NLP (Deceptive Intent Analysis), Computer Vision (Invoice/Receipt Verification)
-* **Backend:** [Insert your backend, e.g., Node.js/Django]
-* **Integration:** [Insert your platform, e.g., WhatsApp API/Mobile App]
+* **Backend:** [Fast API
+* **Integration:** Stramlit cloud
 
 ## 🤖 How AI powers Fin-Shield
 1. **NLP:** Identifies urgency-based social engineering and fraudulent communication styles.
@@ -39,13 +39,11 @@ Fin-Shield AI bridges the security gap, fostering trust in digital financial ser
 ---
 
 ## 📦 Getting Started
-*(Add instructions here on how to run your code, e.g.,)*
-1. Clone the repo: `git clone https://github.com/yourusername/fin-shield.git`
+
+1. Clone the repo: `git clone https://github.com/AnandShadow/fin-shield.git`
 2. Install dependencies: `pip install -r requirements.txt`
 3. Run the application: `python main.py`
 
-## 🤝 Contribution
-Contributions are welcome! If you'd like to improve the detection models or expand support for new regional languages, please open an issue or submit a pull request.
 
-## 📝 License
-Distributed under the MIT License. See `LICENSE` for more information.
+
+
